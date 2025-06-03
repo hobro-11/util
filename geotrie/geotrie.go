@@ -2,7 +2,7 @@ package geotrie
 
 import (
 	"fmt"
-	"util/geotrie/trie"
+	"github.com/hobro-11/util/geotrie/trie"
 	"os"
 	"path/filepath"
 )
