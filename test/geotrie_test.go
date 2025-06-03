@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"util/geotrie"
+	"github.com/hobro-11/util/geotrie"
 
 	"github.com/stretchr/testify/assert"
 )
