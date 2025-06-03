@@ -1,4 +1,4 @@
-module util
+module github.com/hobro-11/util
 
 go 1.24.2
 
