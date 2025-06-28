@@ -1,4 +1,4 @@
-package dynamo_util
+package dynamoutil
 
 import (
 	"log"
