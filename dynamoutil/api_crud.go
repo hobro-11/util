@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/hobro-11/util/dynamoutil/errors"
 )
 
 func GetNextSequence(client *dynamodb.Client, tableName, counterId string) (uint, error) {
@@ -134,6 +135,9 @@ func UpsertItem(ctx context.Context, client *dynamodb.Client, updateArg *UpsertA
 
 	_, err := client.UpdateItem(ctx, &input)
 	if err != nil {
+		if isFailed, msg := errors.IsConditionFailedError(err); isFailed {
+			return errors.NewErrConditionFailed(msg)
+		}
 		return err
 	}
 
@@ -151,6 +155,9 @@ func DeleteItem(ctx context.Context, client *dynamodb.Client, deleteArg *DeleteA
 	_, err := client.DeleteItem(ctx, &input)
 
 	if err != nil {
+		if isFailed, msg := errors.IsConditionFailedError(err); isFailed {
+			return errors.NewErrConditionFailed(msg)
+		}
 		return err
 	}
 
