@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/hobro-11/util/dynamoutil/errors"
+	dynamo_err "github.com/hobro-11/util/dynamoutil/errors"
 )
 
 func GetNextSequence(client *dynamodb.Client, tableName, counterId string) (uint, error) {
@@ -121,6 +121,8 @@ func GenerateProjectionExpression[T any]() (string, error) {
 	return strings.Join(fields, ", "), nil
 }
 
+// updateArg can't be nil
+// if occur conditionCheckFailed, return errors.ErrConditionFailed
 func UpsertItem(ctx context.Context, client *dynamodb.Client, updateArg *UpsertArg) error {
 	updateExp, expAttNames, expAttValues := GetUpdateProps(updateArg.getItem())
 	input := dynamodb.UpdateItemInput{}
@@ -135,8 +137,8 @@ func UpsertItem(ctx context.Context, client *dynamodb.Client, updateArg *UpsertA
 
 	_, err := client.UpdateItem(ctx, &input)
 	if err != nil {
-		if isFailed, msg := errors.IsConditionFailedError(err); isFailed {
-			return errors.NewErrConditionFailed(msg)
+		if isFailed, err := dynamo_err.IsConditionFailedError(err); isFailed {
+			return err
 		}
 		return err
 	}
@@ -144,6 +146,8 @@ func UpsertItem(ctx context.Context, client *dynamodb.Client, updateArg *UpsertA
 	return nil
 }
 
+// deleteArg can't be nil
+// if occur conditionCheckFailed, return errors.ErrConditionFailed
 func DeleteItem(ctx context.Context, client *dynamodb.Client, deleteArg *DeleteArg) error {
 	input := dynamodb.DeleteItemInput{}
 	input.TableName = deleteArg.getTableName()
@@ -155,8 +159,8 @@ func DeleteItem(ctx context.Context, client *dynamodb.Client, deleteArg *DeleteA
 	_, err := client.DeleteItem(ctx, &input)
 
 	if err != nil {
-		if isFailed, msg := errors.IsConditionFailedError(err); isFailed {
-			return errors.NewErrConditionFailed(msg)
+		if isFailed, err := dynamo_err.IsConditionFailedError(err); isFailed {
+			return err
 		}
 		return err
 	}
