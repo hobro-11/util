@@ -137,10 +137,7 @@ func UpsertItem(ctx context.Context, client *dynamodb.Client, updateArg *UpsertA
 
 	_, err := client.UpdateItem(ctx, &input)
 	if err != nil {
-		if isFailed, err := dynamo_err.IsConditionFailedError(err); isFailed {
-			return err
-		}
-		return err
+		return dynamo_err.ErrorHandle(err)
 	}
 
 	return nil
@@ -159,10 +156,52 @@ func DeleteItem(ctx context.Context, client *dynamodb.Client, deleteArg *DeleteA
 	_, err := client.DeleteItem(ctx, &input)
 
 	if err != nil {
-		if isFailed, err := dynamo_err.IsConditionFailedError(err); isFailed {
-			return err
-		}
-		return err
+		return dynamo_err.ErrorHandle(err)
+	}
+
+	return nil
+}
+
+type WriteArg struct {
+	UpdateArgs []UpsertArg
+	DeleteArgs []DeleteArg
+}
+
+func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *WriteArg) error {
+	// input := dynamodb.TransactWriteItemsInput{}
+
+	input := make([]types.TransactWriteItem, 0, len(writeArg.UpdateArgs)+len(writeArg.DeleteArgs))
+
+	for _, updateArg := range writeArg.UpdateArgs {
+		updateExp, expAttNames, expAttValues := GetUpdateProps(updateArg.getItem())
+		input = append(input, types.TransactWriteItem{
+			Update: &types.Update{
+				TableName: updateArg.getTableName(),
+				Key:       updateArg.getKey(),
+				UpdateExpression: aws.String(updateExp),
+				ExpressionAttributeNames: expAttNames,
+				ExpressionAttributeValues: expAttValues,
+				ConditionExpression: updateArg.getConditionExp(),
+			},
+		})
+	}
+
+	for _, deleteArg := range writeArg.DeleteArgs {
+		input = append(input, types.TransactWriteItem{
+			Delete: &types.Delete{
+				TableName: deleteArg.getTableName(),
+				Key:       deleteArg.getKey(),
+				ConditionExpression: deleteArg.getConditionExp(),
+			},
+		})
+	}
+	
+	_, err := client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: input,
+	})
+
+	if err != nil {
+		return dynamo_err.ErrorHandle(err)
 	}
 
 	return nil

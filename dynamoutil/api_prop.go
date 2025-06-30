@@ -11,13 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-func NewGetArg(tableName string, key Keys) *GetArg {
-	return &GetArg{
-		TableName: tableName,
-		Key:       &key,
-	}
-}
-
 type GetArg struct {
 	TableName string
 	Key       *Keys
@@ -45,20 +38,11 @@ func (g *GetArg) getKey() map[string]types.AttributeValue {
 	return key
 }
 
-// item 은 구조체만 가능하다.
-// 텅 빈 속성에 대해선 update 를 진행하지 않는다.
-func NewUpsertArg(tableName string, key Keys, item any, conditionExp string) *UpsertArg {
-	return &UpsertArg{
-		TableName:    tableName,
-		Key:          &key,
-		Item:         item,
-		ConditionExp: conditionExp,
-	}
-}
-
 type UpsertArg struct {
 	TableName    string
 	Key          *Keys
+	// item 은 구조체만 가능하다.
+	// 텅 빈 속성에 대해선 update 를 진행하지 않는다.
 	Item         any
 	ConditionExp string
 }
@@ -96,14 +80,6 @@ func (p *UpsertArg) getConditionExp() *string {
 	return aws.String(p.ConditionExp)
 }
 
-func NewDeleteArg(tableName string, key Keys, conditionExp string) *DeleteArg {
-	return &DeleteArg{
-		TableName:    tableName,
-		Key:          &key,
-		ConditionExp: conditionExp,
-	}
-}
-
 type DeleteArg struct {
 	TableName    string
 	Key          *Keys
@@ -134,15 +110,6 @@ func (p *DeleteArg) getConditionExp() *string {
 		return nil
 	}
 	return aws.String(p.ConditionExp)
-}
-
-func NewQueryArg(tableName, keyCondExp string, keys PkAndSkPrefix, paging *CursorPaging) *QueryArg {
-	return &QueryArg{
-		TableName:              tableName,
-		KeyConditionExpression: keyCondExp,
-		Keys:                   &keys,
-		CursorPaging:           paging,
-	}
 }
 
 type QueryArg struct {
@@ -262,6 +229,7 @@ func (b *BatchGetArg) getPkAndSks() PkAndSks {
 }
 
 type Keys struct {
+	// PK 값은 필수이다.
 	PK     any
 	PKName string
 	SK     any
