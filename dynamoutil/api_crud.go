@@ -179,9 +179,9 @@ func DeleteItem(ctx context.Context, client *dynamodb.Client, deleteArg *DeleteA
 }
 
 type WriteArg struct {
-	PutArgs    []PutArg
-	UpdateArgs []UpdateArg
-	DeleteArgs []DeleteArg
+	PutArgs    []*PutArg
+	UpdateArgs []*UpdateArg
+	DeleteArgs []*DeleteArg
 }
 
 func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *WriteArg) error {
