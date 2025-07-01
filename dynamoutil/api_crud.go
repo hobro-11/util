@@ -121,9 +121,25 @@ func GenerateProjectionExpression[T any]() (string, error) {
 	return strings.Join(fields, ", "), nil
 }
 
+func PutItem(ctx context.Context, client *dynamodb.Client, putArg *PutArg) error {
+	input := dynamodb.PutItemInput{}
+	input.TableName = putArg.getTableName()
+	input.Item = putArg.getItem()
+	if putArg.getConditionExp() != nil {
+		input.ConditionExpression = putArg.getConditionExp()
+	}
+
+	_, err := client.PutItem(ctx, &input)
+	if err != nil {
+		return dynamo_err.ErrorHandle(err)
+	}
+
+	return nil
+}
+
 // updateArg can't be nil
 // if occur conditionCheckFailed, return errors.ErrConditionFailed
-func UpsertItem(ctx context.Context, client *dynamodb.Client, updateArg *UpsertArg) error {
+func UpdateItem(ctx context.Context, client *dynamodb.Client, updateArg *UpdateArg) error {
 	updateExp, expAttNames, expAttValues := GetUpdateProps(updateArg.getItem())
 	input := dynamodb.UpdateItemInput{}
 	input.TableName = updateArg.getTableName()
@@ -163,25 +179,34 @@ func DeleteItem(ctx context.Context, client *dynamodb.Client, deleteArg *DeleteA
 }
 
 type WriteArg struct {
-	UpdateArgs []UpsertArg
+	PutArgs    []PutArg
+	UpdateArgs []UpdateArg
 	DeleteArgs []DeleteArg
 }
 
 func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *WriteArg) error {
-	// input := dynamodb.TransactWriteItemsInput{}
+	input := make([]types.TransactWriteItem, 0, len(writeArg.PutArgs)+len(writeArg.UpdateArgs)+len(writeArg.DeleteArgs))
 
-	input := make([]types.TransactWriteItem, 0, len(writeArg.UpdateArgs)+len(writeArg.DeleteArgs))
+	for _, putArg := range writeArg.PutArgs {
+		input = append(input, types.TransactWriteItem{
+			Put: &types.Put{
+				TableName:           putArg.getTableName(),
+				Item:                putArg.getItem(),
+				ConditionExpression: putArg.getConditionExp(),
+			},
+		})
+	}
 
 	for _, updateArg := range writeArg.UpdateArgs {
 		updateExp, expAttNames, expAttValues := GetUpdateProps(updateArg.getItem())
 		input = append(input, types.TransactWriteItem{
 			Update: &types.Update{
-				TableName: updateArg.getTableName(),
-				Key:       updateArg.getKey(),
-				UpdateExpression: aws.String(updateExp),
-				ExpressionAttributeNames: expAttNames,
+				TableName:                 updateArg.getTableName(),
+				Key:                       updateArg.getKey(),
+				UpdateExpression:          aws.String(updateExp),
+				ExpressionAttributeNames:  expAttNames,
 				ExpressionAttributeValues: expAttValues,
-				ConditionExpression: updateArg.getConditionExp(),
+				ConditionExpression:       updateArg.getConditionExp(),
 			},
 		})
 	}
@@ -189,13 +214,13 @@ func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *Wr
 	for _, deleteArg := range writeArg.DeleteArgs {
 		input = append(input, types.TransactWriteItem{
 			Delete: &types.Delete{
-				TableName: deleteArg.getTableName(),
-				Key:       deleteArg.getKey(),
+				TableName:           deleteArg.getTableName(),
+				Key:                 deleteArg.getKey(),
 				ConditionExpression: deleteArg.getConditionExp(),
 			},
 		})
 	}
-	
+
 	_, err := client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
 		TransactItems: input,
 	})

@@ -11,6 +11,75 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
+func NewPutArg(tableName string, item any, conditionExp string) *PutArg {
+	return &PutArg{
+		TableName:    tableName,
+		Item:         item,
+		ConditionExp: conditionExp,
+	}
+}
+
+func NewGetArg(tableName string, key Keys) *GetArg {
+	return &GetArg{
+		TableName: tableName,
+		Key:       &key,
+	}
+}
+
+func NewUpdateArg(tableName string, key Keys, item any, conditionExp string) *UpdateArg {
+	return &UpdateArg{
+		TableName:    tableName,
+		Key:          &key,
+		Item:         item,
+		ConditionExp: conditionExp,
+	}
+}
+
+func NewDeleteArg(tableName string, key Keys, conditionExp string) *DeleteArg {
+	return &DeleteArg{
+		TableName:    tableName,
+		Key:          &key,
+		ConditionExp: conditionExp,
+	}
+}
+
+func NewQueryArg(tableName string, keyConditionExpression string, keys PkAndSkPrefix, cursorPaging CursorPaging) *QueryArg {
+	return &QueryArg{
+		TableName:              tableName,
+		KeyConditionExpression: keyConditionExpression,
+		Keys:                   &keys,
+		CursorPaging:           &cursorPaging,
+	}
+}
+
+func NewBatchGetArg(tableName string, pkAndSks PkAndSks) *BatchGetArg {
+	return &BatchGetArg{
+		TableName: tableName,
+		PkAndSks:  &pkAndSks,
+	}
+}
+
+type PutArg struct {
+	TableName    string
+	Item         any
+	ConditionExp string
+}
+
+func (p *PutArg) getTableName() *string {
+	return aws.String(p.TableName)
+}
+
+func (p *PutArg) getItem() map[string]types.AttributeValue {
+	return MustMarshalItem(p.Item)
+}
+
+func (p *PutArg) getConditionExp() *string {
+	if p.ConditionExp == "" {
+		return nil
+	}
+	return aws.String(p.ConditionExp)
+}
+
 type GetArg struct {
 	TableName string
 	Key       *Keys
@@ -38,20 +107,20 @@ func (g *GetArg) getKey() map[string]types.AttributeValue {
 	return key
 }
 
-type UpsertArg struct {
-	TableName    string
-	Key          *Keys
+type UpdateArg struct {
+	TableName string
+	Key       *Keys
 	// item 은 구조체만 가능하다.
 	// 텅 빈 속성에 대해선 update 를 진행하지 않는다.
 	Item         any
 	ConditionExp string
 }
 
-func (p *UpsertArg) getTableName() *string {
+func (p *UpdateArg) getTableName() *string {
 	return aws.String(p.TableName)
 }
 
-func (p *UpsertArg) getKey() map[string]types.AttributeValue {
+func (p *UpdateArg) getKey() map[string]types.AttributeValue {
 	key := make(map[string]types.AttributeValue)
 
 	pk := MustMarshalKey(p.Key.PK)
@@ -69,11 +138,11 @@ func (p *UpsertArg) getKey() map[string]types.AttributeValue {
 	return key
 }
 
-func (p *UpsertArg) getItem() any {
+func (p *UpdateArg) getItem() any {
 	return p.Item
 }
 
-func (p *UpsertArg) getConditionExp() *string {
+func (p *UpdateArg) getConditionExp() *string {
 	if p.ConditionExp == "" {
 		return nil
 	}
@@ -199,13 +268,6 @@ func (q *QueryArg) getLimit() int32 {
 		q.CursorPaging.Size = 10
 	}
 	return q.CursorPaging.Size
-}
-
-func NewBatchGetArg(tableName string, keys PkAndSks) *BatchGetArg {
-	return &BatchGetArg{
-		TableName: tableName,
-		PkAndSks:  &keys,
-	}
 }
 
 type BatchGetArg struct {
