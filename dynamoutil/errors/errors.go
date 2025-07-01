@@ -15,6 +15,11 @@ type ApiError struct {
 	Err     error
 }
 
+const (
+	ValidationException = "ValidationException"
+	ConditionalCheckFailedException = "ConditionalCheckFailedException"
+)
+
 // Error는 에러 인터페이스를 구현합니다
 func (e *ApiError) Error() string {
 	return e.Message
@@ -44,7 +49,7 @@ func ErrorHandle(inputErr error) error {
 			if *reason.Code == "ValidationError" {
 				return &ApiError{
 					Code:    code,
-					Message: *reason.Code,
+					Message: ValidationException,
 					Reason:  []string{*reason.Message},
 					Err:     txApiErr,
 				}
@@ -52,7 +57,7 @@ func ErrorHandle(inputErr error) error {
 			if *reason.Code == "ConditionalCheckFailed" {
 				return &ApiError{
 					Code:    code,
-					Message: *reason.Code,
+					Message: ConditionalCheckFailedException,
 					Reason:  []string{*reason.Message},
 					Err:     txApiErr,
 				}
@@ -67,8 +72,34 @@ func ErrorHandle(inputErr error) error {
 		}
 	}
 
+	var condCheckFailed *types.ConditionalCheckFailedException
+	if errors.As(inputErr, &condCheckFailed) {
+		return &ApiError{
+			Code:    code,
+			Message: ConditionalCheckFailedException,
+			Reason:  []string{*condCheckFailed.Message},
+			Err:     condCheckFailed,
+		}
+	}
+
 	var apiError smithy.APIError
 	if errors.As(inputErr, &apiError) {
+		if apiError.ErrorCode() == "ValidationException" {
+			return &ApiError{
+				Code:    code,
+				Message: ValidationException,
+				Reason:  []string{apiError.ErrorMessage()},
+				Err:     apiError,
+			}
+		}
+		if apiError.ErrorCode() == "ConditionalCheckFailedException" {
+			return &ApiError{
+				Code:    code,
+				Message: ConditionalCheckFailedException,
+				Reason:  []string{apiError.ErrorMessage()},
+				Err:     apiError,
+			}
+		}
 		return &ApiError{
 			Code:    code,
 			Message: apiError.ErrorCode(),
