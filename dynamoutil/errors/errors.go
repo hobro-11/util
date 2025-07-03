@@ -1,88 +1,74 @@
 package errors
 
-import (
-	"errors"
-	"fmt"
+type (
+	ApiError interface {
+		error
+		Unwrap() error
+		Status() int
+	}
 
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/smithy-go"
-	"github.com/aws/smithy-go/transport/http"
+	ErrConditionFailed struct {
+		Err error
+	}
+
+	ErrValidationFailed struct {
+		Err error
+	}
+
+	ErrInternalError struct {
+		Err error
+	}
+
+	ErrOperationFailed struct {
+		Code int
+		Err  error
+	}
 )
 
-type ApiError struct {
-	Message string
+func (e *ErrConditionFailed) Status() int {
+	return 400
 }
 
-const (
-	ValidationException             = "ValidationException"
-	ValidationError                 = "ValidationError"
-	ConditionalCheckFailedException = "ConditionalCheckFailedException"
-	TransactionCanceledException    = "TransactionCanceledException"
-	ConditionalReqFailedMessage     = "The conditional request failed"
-)
-
-var (
-	ErrConditionFailed  = errors.New("condition failed")
-	ErrValidationFailed = errors.New("validation failed")
-	ErrInternalError    = errors.New("internal error")
-	ErrUnknown          = errors.New("unknown error")
-)
-
-// Error는 에러 인터페이스를 구현합니다
-func (e *ApiError) Error() string {
-	return e.Message
+func (e *ErrConditionFailed) Error() string {
+	return "condition failed"
 }
 
-func ErrorHandle(inputErr error) error {
-	var (
-		code     int
-		httpErr  *http.ResponseError
-		apiError smithy.APIError
-	)
+func (e *ErrConditionFailed) Unwrap() error {
+	return e.Err
+}
 
-	if errors.As(inputErr, &httpErr) {
-		code = httpErr.Response.StatusCode
-		if code == 500 {
-			code = 500
-		}
-	}
+func (e *ErrValidationFailed) Status() int {
+	return 400
+}
 
-	if errors.As(inputErr, &apiError) {
-		if code == 500 {
-			return fmt.Errorf("%w: %w", ErrInternalError, apiError)
-		}
+func (e *ErrValidationFailed) Error() string {
+	return "validation failed"
+}
 
-		if apiError.ErrorCode() == ValidationException {
-			return fmt.Errorf("%w: %w", ErrValidationFailed, apiError)
-		}
+func (e *ErrValidationFailed) Unwrap() error {
+	return e.Err
+}
 
-		if apiError.ErrorCode() == ConditionalCheckFailedException {
-			return fmt.Errorf("%w: %w", ErrConditionFailed, apiError)
-		}
+func (e *ErrInternalError) Status() int {
+	return 500
+}
 
-		var txApiErr *types.TransactionCanceledException
-		if errors.As(inputErr, &txApiErr) {
-			reason := txApiErr.CancellationReasons[0]
-			if reason.Message != nil {
-				if *reason.Message == ConditionalReqFailedMessage {
-					return fmt.Errorf("%w: %w", ErrConditionFailed, txApiErr)
-				}
-			}
+func (e *ErrInternalError) Error() string {
+	return "internal error"
+}
 
-			if reason.Code != nil {
-				if *reason.Code == ValidationError {
-					return fmt.Errorf("%w: %w", ErrValidationFailed, txApiErr)
-				}
-			}
+func (e *ErrInternalError) Unwrap() error {
+	return e.Err
+}
 
-			return fmt.Errorf("%w: %w", ErrUnknown, txApiErr)
-		}
+func (e *ErrOperationFailed) Status() int {
+	return e.Code
+}
 
-		return fmt.Errorf("%w: %w", ErrUnknown, apiError)
-	}
+func (e *ErrOperationFailed) Error() string {
+	return "operation failed"
+}
 
-	if code == 500 {
-		return fmt.Errorf("%w: %w", ErrInternalError, inputErr)
-	}
-	return fmt.Errorf("%w: %w", ErrUnknown, inputErr)
+func (e *ErrOperationFailed) Unwrap() error {
+	return e.Err
 }

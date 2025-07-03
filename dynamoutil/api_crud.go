@@ -33,22 +33,22 @@ func GetNextSequence(client *dynamodb.Client, tableName, counterId string) (uint
 
 	result, err := client.UpdateItem(context.TODO(), input)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get next sequence: %v", err)
+		return 0, dynamo_err.ErrorHandle(err)
 	}
 
 	currentValueAttr, ok := result.Attributes["currentValue"]
 	if !ok {
-		return 0, fmt.Errorf("currentValue not found in response")
+		return 0, &dynamo_err.ErrInternalError{Err: fmt.Errorf("currentValue not found in response")}
 	}
 
 	currentValueN, ok := currentValueAttr.(*types.AttributeValueMemberN)
 	if !ok {
-		return 0, fmt.Errorf("currentValue is not a number")
+		return 0, &dynamo_err.ErrInternalError{Err: fmt.Errorf("currentValue is not a number")}
 	}
 
 	seq, err := strconv.ParseInt(currentValueN.Value, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse sequence number: %v", err)
+		return 0, &dynamo_err.ErrInternalError{Err: fmt.Errorf("failed to parse sequence number: %v", err)}
 	}
 
 	return uint(seq), nil
@@ -67,13 +67,13 @@ func GetItem[Dest any](ctx context.Context, client *dynamodb.Client, getArg *Get
 	result, err := client.GetItem(ctx, &input)
 
 	if err != nil {
-		return nil, err
+		return nil, dynamo_err.ErrorHandle(err)
 	}
 
 	dest := new(Dest)
 	err = attributevalue.UnmarshalMap(result.Item, dest)
 	if err != nil {
-		return nil, err
+		return nil, &dynamo_err.ErrInternalError{Err: err}
 	}
 
 	return dest, nil
@@ -92,7 +92,7 @@ func GenerateProjectionExpression[T any]() (string, error) {
 
 	// 구조체가 아닌 경우 오류 반환
 	if tType.Kind() != reflect.Struct {
-		return "", fmt.Errorf("expected a struct type, got %v", tType.Kind())
+		return "", &dynamo_err.ErrInternalError{Err: fmt.Errorf("expected a struct type, got %v", tType.Kind())}
 	}
 
 	var fields []string
@@ -115,7 +115,7 @@ func GenerateProjectionExpression[T any]() (string, error) {
 	}
 
 	if len(fields) == 0 {
-		return "", fmt.Errorf("no fields found with dynamodbav tags")
+		return "", &dynamo_err.ErrInternalError{Err: fmt.Errorf("no fields found with dynamodbav tags")}
 	}
 
 	return strings.Join(fields, ", "), nil
