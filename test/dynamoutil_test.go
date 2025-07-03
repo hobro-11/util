@@ -144,9 +144,9 @@ func TestPutConditionFailed(t *testing.T) {
 
 	task()
 	err := task()
-	var failErr *dynamo_err.ApiError
+	var failErr dynamo_err.ApiError
 	errors.As(err, &failErr)
-	assert.Equal(t, dynamo_err.ConditionalCheckFailedException, failErr.Message)
+	assert.Equal(t, "condition failed", failErr.Error())
 	deleteItem()
 }
 
@@ -167,9 +167,9 @@ func TestValidationErr(t *testing.T) {
 	putArg := dynamoutil.NewPutArg(tableName, item, "attribute_not_exists(pk) AND attribute_not_exists(sk)")
 
 	err := dynamoutil.PutItem(context.Background(), client, putArg)
-	var failErr *dynamo_err.ApiError
+	var failErr dynamo_err.ApiError
 	errors.As(err, &failErr)
-	assert.Equal(t, dynamo_err.ValidationException, failErr.Message)
+	assert.Equal(t, "validation failed", failErr.Error())
 }
 
 func TestUpdateAndDelete(t *testing.T) {
