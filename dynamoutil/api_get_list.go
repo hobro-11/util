@@ -62,8 +62,8 @@ func BatchGetItems[Dest any](ctx context.Context, client *dynamodb.Client, arg *
 	k := make([]map[string]types.AttributeValue, 0, len(keys.SKs))
 	for _, v := range keys.SKs {
 		k = append(k, map[string]types.AttributeValue{
-			keys.PKName: MustMarshalKey(keys.PK),
-			keys.SKName: MustMarshalKey(v),
+			keys.PKName: MustMarshalPrimitive(keys.PK),
+			keys.SKName: MustMarshalPrimitive(v),
 		})
 	}
 

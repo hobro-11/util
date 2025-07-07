@@ -11,11 +11,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-func NewPutArg(tableName string, item any, conditionExp string) *PutArg {
+func NewPutArg(tableName string, item any, expAttForCondition map[string]any, conditionExp string) *PutArg {
 	return &PutArg{
-		TableName:    tableName,
-		Item:         item,
-		ConditionExp: conditionExp,
+		TableName:          tableName,
+		Item:               item,
+		ExpAttForCondition: expAttForCondition,
+		ConditionExp:       conditionExp,
 	}
 }
 
@@ -26,12 +27,15 @@ func NewGetArg(tableName string, key Keys) *GetArg {
 	}
 }
 
-func NewUpdateArg(tableName string, key Keys, item any, conditionExp string) *UpdateArg {
+// item에 사용된 필드값, dynamodbav 태그값과 map의 key가 겹치면 안된다. (대소구분은 함)
+// 겹칠시 ErrInternalError 반환
+func NewUpdateArg(tableName string, key Keys, item any, expAttForCondition map[string]any, conditionExp string) *UpdateArg {
 	return &UpdateArg{
-		TableName:    tableName,
-		Key:          &key,
-		Item:         item,
-		ConditionExp: conditionExp,
+		TableName:          tableName,
+		Key:                &key,
+		Item:               item,
+		ExpAttForCondition: expAttForCondition,
+		ConditionExp:       conditionExp,
 	}
 }
 
@@ -60,17 +64,36 @@ func NewBatchGetArg(tableName string, pkAndSks PkAndSks) *BatchGetArg {
 }
 
 type PutArg struct {
-	TableName    string
-	Item         any
-	ConditionExp string
+	TableName          string
+	Item               any
+	ExpAttForCondition map[string]any
+	ConditionExp       string
 }
 
 func (p *PutArg) getTableName() *string {
 	return aws.String(p.TableName)
 }
 
-func (p *PutArg) getItem() map[string]types.AttributeValue {
+func (p *PutArg) getItemAttValues() map[string]types.AttributeValue {
 	return MustMarshalItem(p.Item)
+}
+
+func (p *PutArg) getExpAttForCondition() (expAttValues map[string]types.AttributeValue) {
+	if p.ExpAttForCondition == nil {
+		return nil
+	}
+
+	l := len(p.ExpAttForCondition)
+	if l == 0 {
+		return nil
+	}
+
+	expAttValues = make(map[string]types.AttributeValue, l)
+	for k, v := range p.ExpAttForCondition {
+		expAttValues[":"+k] = MustMarshalPrimitive(v)
+	}
+
+	return expAttValues
 }
 
 func (p *PutArg) getConditionExp() *string {
@@ -92,13 +115,13 @@ func (g *GetArg) getTableName() *string {
 func (g *GetArg) getKey() map[string]types.AttributeValue {
 	key := make(map[string]types.AttributeValue)
 
-	pk := MustMarshalKey(g.Key.PK)
+	pk := MustMarshalPrimitive(g.Key.PK)
 	if pk == nil {
 		return nil
 	}
 	key[g.Key.PKName] = pk
 
-	sk := MustMarshalKey(g.Key.SK)
+	sk := MustMarshalPrimitive(g.Key.SK)
 	if sk == nil {
 		return key
 	}
@@ -111,9 +134,12 @@ type UpdateArg struct {
 	TableName string
 	Key       *Keys
 	// item 은 구조체만 가능하다.
-	// 텅 빈 속성에 대해선 update 를 진행하지 않는다.
-	Item         any
-	ConditionExp string
+	// nil 속성에 대해선 update 를 진행하지 않는다. ("", 0은 업데이트한다.)
+	Item any
+	// item에 사용된 필드값, dynamodbav 태그값과 map의 key가 겹치면 안된다. (대소구분은 함)
+	// 겹칠시 ErrInternalError 반환
+	ExpAttForCondition map[string]any
+	ConditionExp       string
 }
 
 func (p *UpdateArg) getTableName() *string {
@@ -123,19 +149,37 @@ func (p *UpdateArg) getTableName() *string {
 func (p *UpdateArg) getKey() map[string]types.AttributeValue {
 	key := make(map[string]types.AttributeValue)
 
-	pk := MustMarshalKey(p.Key.PK)
+	pk := MustMarshalPrimitive(p.Key.PK)
 	if pk == nil {
 		return nil
 	}
 	key[p.Key.PKName] = pk
 
-	sk := MustMarshalKey(p.Key.SK)
+	sk := MustMarshalPrimitive(p.Key.SK)
 	if sk == nil {
 		return key
 	}
 	key[p.Key.SKName] = sk
 
 	return key
+}
+
+func (p *UpdateArg) getExpAttForCondition() (expAttValues map[string]types.AttributeValue) {
+	if p.ExpAttForCondition == nil {
+		return nil
+	}
+
+	l := len(p.ExpAttForCondition)
+	if l == 0 {
+		return nil
+	}
+
+	expAttValues = make(map[string]types.AttributeValue, l)
+	for k, v := range p.ExpAttForCondition {
+		expAttValues[":"+k] = MustMarshalPrimitive(v)
+	}
+
+	return expAttValues
 }
 
 func (p *UpdateArg) getItem() any {
@@ -161,9 +205,9 @@ func (p *DeleteArg) getTableName() *string {
 
 func (p *DeleteArg) getKey() map[string]types.AttributeValue {
 	var key map[string]types.AttributeValue
-	pk := MustMarshalKey(p.Key.PK)
+	pk := MustMarshalPrimitive(p.Key.PK)
 	if p.Key.SK != nil && p.Key.SKName != "" {
-		sk := MustMarshalKey(p.Key.SK)
+		sk := MustMarshalPrimitive(p.Key.SK)
 		if sk != nil {
 			key = map[string]types.AttributeValue{
 				p.Key.PKName: pk,
@@ -212,13 +256,13 @@ func (q *QueryArg) getKeyConditionExpression() *string {
 func (q *QueryArg) getExpAttVal() map[string]types.AttributeValue {
 	key := make(map[string]types.AttributeValue)
 
-	pk := MustMarshalKey(q.Keys.PK)
+	pk := MustMarshalPrimitive(q.Keys.PK)
 	if pk == nil {
 		return nil
 	}
 	key[":"+q.Keys.PKName] = pk
 
-	sk := MustMarshalKey(q.Keys.SKPrefix)
+	sk := MustMarshalPrimitive(q.Keys.SKPrefix)
 	if sk == nil {
 		return key
 	}
@@ -244,7 +288,7 @@ func (q *QueryArg) getExclusiveStartKey() map[string]types.AttributeValue {
 		return nil
 	}
 
-	pk := MustMarshalKey(q.CursorPaging.ExclusiveStartKey.PK)
+	pk := MustMarshalPrimitive(q.CursorPaging.ExclusiveStartKey.PK)
 	if pk == nil {
 		return nil
 	}
@@ -254,7 +298,7 @@ func (q *QueryArg) getExclusiveStartKey() map[string]types.AttributeValue {
 		return key
 	}
 
-	sk := MustMarshalKey(q.CursorPaging.ExclusiveStartKey.SK)
+	sk := MustMarshalPrimitive(q.CursorPaging.ExclusiveStartKey.SK)
 	if sk == nil {
 		return key
 	}
@@ -300,7 +344,7 @@ type Keys struct {
 
 // number와 string 만 지원, 지원하지 않는 타입의 경우 nil을 반환한다.
 // if key is nil, return nil
-func MustMarshalKey(key any) types.AttributeValue {
+func MustMarshalPrimitive(key any) types.AttributeValue {
 	if key == nil {
 		return nil
 	}
@@ -343,7 +387,6 @@ func GetUpdateProps(input any) (updateExp string, expAttNames map[string]string,
 	var setExpressions []string
 	expAttNames = make(map[string]string)
 	expAttValues = make(map[string]types.AttributeValue)
-	nameCounter := 0
 
 	val := reflect.ValueOf(input)
 	if val.Kind() == reflect.Ptr {
@@ -361,7 +404,6 @@ func GetUpdateProps(input any) (updateExp string, expAttNames map[string]string,
 		fieldType := typ.Field(i)
 		tag := fieldType.Tag.Get("dynamodbav")
 
-		// The tag can be "my-field,omitempty". We only need "my-field".
 		tagParts := strings.Split(tag, ",")
 		columnName := tagParts[0]
 
@@ -369,27 +411,22 @@ func GetUpdateProps(input any) (updateExp string, expAttNames map[string]string,
 			continue
 		}
 
-		// Skip zero values, which is a simple way to emulate `omitempty` for update expressions.
-		if !field.IsValid() || reflect.DeepEqual(field.Interface(), reflect.Zero(field.Type()).Interface()) {
+		// Skip nil pointer values. For non-pointer types, allow zero values (e.g., "", 0).
+		if field.Kind() == reflect.Ptr && field.IsNil() {
 			continue
 		}
 
-		// If the tag is present but the name is empty, fall back to the struct field name.
 		if columnName == "" {
 			columnName = fieldType.Name
 		}
 
-		nameKey := "#f" + strconv.Itoa(nameCounter)
-		valueKey := ":v" + strconv.Itoa(nameCounter)
-		nameCounter++
+		nameKey := "#" + fieldType.Name
+		valueKey := ":" + fieldType.Name
 
 		expAttNames[nameKey] = columnName
 
-		// Marshal the field's value into a DynamoDB attribute value.
-		// This correctly handles all supported data types (string, number, bool, list, map, etc.).
 		av, err := attributevalue.Marshal(field.Interface())
 		if err != nil {
-			// Consider logging this error for debugging purposes.
 			continue
 		}
 

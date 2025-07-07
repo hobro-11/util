@@ -124,7 +124,10 @@ func GenerateProjectionExpression[T any]() (string, error) {
 func PutItem(ctx context.Context, client *dynamodb.Client, putArg *PutArg) error {
 	input := dynamodb.PutItemInput{}
 	input.TableName = putArg.getTableName()
-	input.Item = putArg.getItem()
+	input.Item = putArg.getItemAttValues()	
+	expAttValues := putArg.getExpAttForCondition()
+	input.ExpressionAttributeValues = expAttValues
+
 	if putArg.getConditionExp() != nil {
 		input.ConditionExpression = putArg.getConditionExp()
 	}
@@ -140,13 +143,22 @@ func PutItem(ctx context.Context, client *dynamodb.Client, putArg *PutArg) error
 // updateArg can't be nil
 // if occur conditionCheckFailed, return errors.ErrConditionFailed
 func UpdateItem(ctx context.Context, client *dynamodb.Client, updateArg *UpdateArg) error {
-	updateExp, expAttNames, expAttValues := GetUpdateProps(updateArg.getItem())
 	input := dynamodb.UpdateItemInput{}
+	updateExp, expAttNames, expAttValues := GetUpdateProps(updateArg.getItem())
 	input.TableName = updateArg.getTableName()
 	input.Key = updateArg.getKey()
 	input.UpdateExpression = aws.String(updateExp)
 	input.ExpressionAttributeNames = expAttNames
 	input.ExpressionAttributeValues = expAttValues
+	if expAttValues := updateArg.getExpAttForCondition(); expAttValues != nil {
+		for k, v := range expAttValues {
+			if _, ok := input.ExpressionAttributeValues[k]; !ok {
+				input.ExpressionAttributeValues[k] = v
+			} else {
+				return &dynamo_err.ErrInternalError{Err: fmt.Errorf("duplicated expression attribute name: %s", k)}
+			}
+		}
+	}
 	if updateArg.getConditionExp() != nil {
 		input.ConditionExpression = updateArg.getConditionExp()
 	}
@@ -185,29 +197,54 @@ type WriteArg struct {
 	ClientRequestToken *string
 }
 
+type (
+	TxSeqCtxKey struct{}
+
+	TxItemSeqVal struct {
+		TxItems []TxItem
+	}
+
+	TxItem struct {
+		Method string
+		PK     string
+		SK     string
+	}
+)
+
 func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *WriteArg) error {
 	txWriteLen := len(writeArg.PutArgs) + len(writeArg.UpdateArgs) + len(writeArg.DeleteArgs)
 	input := make([]types.TransactWriteItem, 0, txWriteLen)
 
 	for _, putArg := range writeArg.PutArgs {
+		expAttValues := putArg.getExpAttForCondition()
 		input = append(input, types.TransactWriteItem{
 			Put: &types.Put{
-				TableName:           putArg.getTableName(),
-				Item:                putArg.getItem(),
-				ConditionExpression: putArg.getConditionExp(),
+				TableName:                 putArg.getTableName(),
+				Item:                      putArg.getItemAttValues(),
+				ConditionExpression:       putArg.getConditionExp(),
+				ExpressionAttributeValues: expAttValues,
 			},
 		})
 	}
 
 	for _, updateArg := range writeArg.UpdateArgs {
-		updateExp, expAttNames, expAttValues := GetUpdateProps(updateArg.getItem())
+		updateExp, expNames, expVal := GetUpdateProps(updateArg.getItem())
+		if newExpVal := updateArg.getExpAttForCondition(); newExpVal != nil {
+			for k, v := range newExpVal {
+				if _, ok := expVal[k]; !ok {
+					expVal[k] = v
+				} else {
+					return &dynamo_err.ErrInternalError{Err: fmt.Errorf("duplicated expression attribute name: %s", k)}
+				}
+			}
+		}
 		input = append(input, types.TransactWriteItem{
 			Update: &types.Update{
 				TableName:                 updateArg.getTableName(),
 				Key:                       updateArg.getKey(),
 				UpdateExpression:          aws.String(updateExp),
-				ExpressionAttributeNames:  expAttNames,
-				ExpressionAttributeValues: expAttValues,
+				ExpressionAttributeNames:  expNames,
+				ExpressionAttributeValues: expVal,
 				ConditionExpression:       updateArg.getConditionExp(),
 			},
 		})
