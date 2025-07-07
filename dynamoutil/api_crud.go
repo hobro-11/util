@@ -179,9 +179,10 @@ func DeleteItem(ctx context.Context, client *dynamodb.Client, deleteArg *DeleteA
 }
 
 type WriteArg struct {
-	PutArgs    []*PutArg
-	UpdateArgs []*UpdateArg
-	DeleteArgs []*DeleteArg
+	PutArgs            []*PutArg
+	UpdateArgs         []*UpdateArg
+	DeleteArgs         []*DeleteArg
+	ClientRequestToken *string
 }
 
 func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *WriteArg) error {
@@ -222,7 +223,8 @@ func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *Wr
 	}
 
 	_, err := client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
-		TransactItems: input,
+		TransactItems:      input,
+		ClientRequestToken: writeArg.ClientRequestToken,
 	})
 
 	if err != nil {

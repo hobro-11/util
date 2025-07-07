@@ -8,8 +8,8 @@ import (
 	"github.com/aws/smithy-go/transport/http"
 )
 
-
 const (
+	None                            = "None"
 	ValidationException             = "ValidationException"
 	ValidationError                 = "ValidationError"
 	ConditionalCheckFailedException = "ConditionalCheckFailedException"
@@ -29,6 +29,41 @@ func ErrorHandle(inputErr error) error {
 		code = httpErr.Response.StatusCode
 		if code == 500 {
 			code = 500
+		}
+	}
+
+	if errors.As(inputErr, &txApiErr) {
+		for _, reason := range txApiErr.CancellationReasons {
+			if reason.Message != nil {
+				if *reason.Message == ConditionalReqFailedMessage {
+					return &ErrConditionFailed{
+						Err: txApiErr,
+					}
+				}
+			}
+
+			if reason.Code != nil {
+				if *reason.Code == ValidationError {
+					return &ErrValidationFailed{
+						Err: txApiErr,
+					}
+				}
+
+				if *reason.Code == ConditionalCheckFailedException {
+					return &ErrConditionFailed{
+						Err: txApiErr,
+					}
+				}
+
+				if *reason.Code == None {
+					continue
+				}
+			}
+		}
+
+		return &ErrOperationFailed{
+			Code: code,
+			Err:  txApiErr,
 		}
 	}
 
@@ -53,30 +88,6 @@ func ErrorHandle(inputErr error) error {
 
 		return &ErrInternalError{
 			Err: apiError,
-		}
-	}
-
-	if errors.As(inputErr, &txApiErr) {
-		reason := txApiErr.CancellationReasons[0]
-		if reason.Message != nil {
-			if *reason.Message == ConditionalReqFailedMessage {
-				return &ErrConditionFailed{
-					Err: txApiErr,
-				}
-			}
-		}
-
-		if reason.Code != nil {
-			if *reason.Code == ValidationError {
-				return &ErrValidationFailed{
-					Err: txApiErr,
-				}
-			}
-		}
-
-		return &ErrOperationFailed{
-			Code: code,
-			Err:  txApiErr,
 		}
 	}
 
