@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"context"
 	"errors"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -12,63 +13,60 @@ const (
 	None                            = "None"
 	ValidationException             = "ValidationException"
 	ValidationError                 = "ValidationError"
+	TransactionConflictException    = "TransactionConflictException"
 	ConditionalCheckFailedException = "ConditionalCheckFailedException"
 	TransactionCanceledException    = "TransactionCanceledException"
 	ConditionalReqFailedMessage     = "The conditional request failed"
 )
 
-func ErrorHandle(inputErr error) error {
+type (
+	TxSeqCtxKey struct{}
+
+	TxItemSeqVal struct {
+		TxItems []TxItem
+	}
+
+	TxItem struct {
+		Method string
+		PK     string
+		SK     string
+	}
+)
+
+func ErrorHandle(ctx context.Context, inputErr error) error {
 	var (
-		code     int
+		hs       int
 		httpErr  *http.ResponseError
 		txApiErr *types.TransactionCanceledException
 		apiError smithy.APIError
+		txSeqVal *TxItemSeqVal
 	)
 
 	if errors.As(inputErr, &httpErr) {
-		code = httpErr.Response.StatusCode
-		if code == 500 {
-			code = 500
+		hs = httpErr.Response.StatusCode
+		if hs == 500 {
+			hs = 500
 		}
 	}
 
 	if errors.As(inputErr, &txApiErr) {
-		for _, reason := range txApiErr.CancellationReasons {
-			if reason.Message != nil {
-				if *reason.Message == ConditionalReqFailedMessage {
-					return &ErrConditionFailed{
-						Err: txApiErr,
-					}
-				}
-			}
+		txSeqVal = getTxSeqVal(ctx)
 
-			if reason.Code != nil {
-				if *reason.Code == ValidationError {
-					return &ErrValidationFailed{
-						Err: txApiErr,
-					}
-				}
-
-				if *reason.Code == ConditionalCheckFailedException {
-					return &ErrConditionFailed{
-						Err: txApiErr,
-					}
-				}
-
-				if *reason.Code == None {
-					continue
-				}
-			}
+		if txSeqVal != nil {
+			txErr := getTxErrAppliedTxCancelReason(txApiErr, txSeqVal)
+			txErr.HttpStatus = hs
+			txErr.Err = txApiErr
+			return txErr
 		}
 
-		return &ErrOperationFailed{
-			Code: code,
-			Err:  txApiErr,
+		return &ErrTransactionFailed{
+			HttpStatus: hs,
+			Err:        txApiErr,
 		}
 	}
 
 	if errors.As(inputErr, &apiError) {
-		if code == 500 {
+		if hs == 500 {
 			return &ErrInternalError{
 				Err: apiError,
 			}
@@ -91,14 +89,47 @@ func ErrorHandle(inputErr error) error {
 		}
 	}
 
-	if code == 500 {
+	if hs == 500 {
 		return &ErrInternalError{
 			Err: inputErr,
 		}
 	}
 
 	return &ErrOperationFailed{
-		Code: code,
-		Err:  inputErr,
+		HttpStatus: hs,
+		Err:        inputErr,
 	}
 }
+
+func getTxSeqVal(ctx context.Context) *TxItemSeqVal {
+	if txSeqVal, ok := ctx.Value(TxSeqCtxKey{}).(*TxItemSeqVal); ok {
+		return txSeqVal
+	}
+
+	return nil
+}
+
+func getTxErrAppliedTxCancelReason(tae *types.TransactionCanceledException, tsv *TxItemSeqVal) *ErrTransactionFailed {
+	txErr := &ErrTransactionFailed{
+		Reasons: make([]TxCanceledReason, len(tae.CancellationReasons)),
+	}
+
+	for i, reason := range tae.CancellationReasons {
+		if reason.Code != nil {
+			if *reason.Code == "" {
+				txErr.Reasons[i] = TxCanceledReason{
+					Code:   None,
+					TxItem: tsv.TxItems[i],
+				}
+			} else {
+				txErr.Reasons[i] = TxCanceledReason{
+					Code:   *reason.Code,
+					TxItem: tsv.TxItems[i],
+				}
+			}
+		}
+	}
+
+	return txErr
+}
+

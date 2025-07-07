@@ -20,8 +20,19 @@ type (
 	}
 
 	ErrOperationFailed struct {
-		Code int
-		Err  error
+		HttpStatus int
+		Err        error
+	}
+
+	ErrTransactionFailed struct {
+		HttpStatus int
+		Reasons    []TxCanceledReason
+		Err        error
+	}
+
+	TxCanceledReason struct {
+		Code   string
+		TxItem TxItem
 	}
 )
 
@@ -62,7 +73,7 @@ func (e *ErrInternalError) Unwrap() error {
 }
 
 func (e *ErrOperationFailed) Status() int {
-	return e.Code
+	return e.HttpStatus
 }
 
 func (e *ErrOperationFailed) Error() string {
@@ -71,4 +82,20 @@ func (e *ErrOperationFailed) Error() string {
 
 func (e *ErrOperationFailed) Unwrap() error {
 	return e.Err
+}
+
+func (e *ErrTransactionFailed) Status() int {
+	return e.HttpStatus
+}
+
+func (e *ErrTransactionFailed) Error() string {
+	return "transaction failed"
+}
+
+func (e *ErrTransactionFailed) Unwrap() error {
+	return e.Err
+}
+
+func (e *ErrTransactionFailed) GetReason() []TxCanceledReason {
+	return e.Reasons
 }

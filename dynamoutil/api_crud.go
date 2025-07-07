@@ -33,7 +33,7 @@ func GetNextSequence(client *dynamodb.Client, tableName, counterId string) (uint
 
 	result, err := client.UpdateItem(context.TODO(), input)
 	if err != nil {
-		return 0, dynamo_err.ErrorHandle(err)
+		return 0, dynamo_err.ErrorHandle(context.TODO(), err)
 	}
 
 	currentValueAttr, ok := result.Attributes["currentValue"]
@@ -67,7 +67,7 @@ func GetItem[Dest any](ctx context.Context, client *dynamodb.Client, getArg *Get
 	result, err := client.GetItem(ctx, &input)
 
 	if err != nil {
-		return nil, dynamo_err.ErrorHandle(err)
+		return nil, dynamo_err.ErrorHandle(ctx, err)
 	}
 
 	dest := new(Dest)
@@ -131,7 +131,7 @@ func PutItem(ctx context.Context, client *dynamodb.Client, putArg *PutArg) error
 
 	_, err := client.PutItem(ctx, &input)
 	if err != nil {
-		return dynamo_err.ErrorHandle(err)
+		return dynamo_err.ErrorHandle(ctx, err)
 	}
 
 	return nil
@@ -153,7 +153,7 @@ func UpdateItem(ctx context.Context, client *dynamodb.Client, updateArg *UpdateA
 
 	_, err := client.UpdateItem(ctx, &input)
 	if err != nil {
-		return dynamo_err.ErrorHandle(err)
+		return dynamo_err.ErrorHandle(ctx, err)
 	}
 
 	return nil
@@ -172,7 +172,7 @@ func DeleteItem(ctx context.Context, client *dynamodb.Client, deleteArg *DeleteA
 	_, err := client.DeleteItem(ctx, &input)
 
 	if err != nil {
-		return dynamo_err.ErrorHandle(err)
+		return dynamo_err.ErrorHandle(ctx, err)
 	}
 
 	return nil
@@ -186,7 +186,8 @@ type WriteArg struct {
 }
 
 func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *WriteArg) error {
-	input := make([]types.TransactWriteItem, 0, len(writeArg.PutArgs)+len(writeArg.UpdateArgs)+len(writeArg.DeleteArgs))
+	txWriteLen := len(writeArg.PutArgs) + len(writeArg.UpdateArgs) + len(writeArg.DeleteArgs)
+	input := make([]types.TransactWriteItem, 0, txWriteLen)
 
 	for _, putArg := range writeArg.PutArgs {
 		input = append(input, types.TransactWriteItem{
@@ -228,7 +229,7 @@ func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *Wr
 	})
 
 	if err != nil {
-		return dynamo_err.ErrorHandle(err)
+		return dynamo_err.ErrorHandle(ctx, err)
 	}
 
 	return nil
