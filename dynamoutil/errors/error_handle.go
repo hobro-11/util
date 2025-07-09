@@ -90,7 +90,7 @@ func getTxErrAppliedTxCancelReason(ctx context.Context, hs int, tae *types.Trans
 		return txErr
 	}
 
-	errReasons := make([]TxCanceledReason, len(tae.CancellationReasons))
+	errReasons := []TxCanceledReason{}
 
 	for i, reason := range tae.CancellationReasons {
 		var code string
