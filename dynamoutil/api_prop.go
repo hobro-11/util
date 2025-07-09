@@ -1,7 +1,7 @@
 package dynamoutil
 
 import (
-	"log"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
@@ -74,7 +74,7 @@ func (p *PutArg) getTableName() *string {
 	return aws.String(p.TableName)
 }
 
-func (p *PutArg) getItemAttValues() map[string]types.AttributeValue {
+func (p *PutArg) getItemAttValues() (map[string]types.AttributeValue, error) {
 	return MustMarshalItem(p.Item)
 }
 
@@ -164,22 +164,26 @@ func (p *UpdateArg) getKey() map[string]types.AttributeValue {
 	return key
 }
 
-func (p *UpdateArg) getExpAttForCondition() (expAttValues map[string]types.AttributeValue) {
+func (p *UpdateArg) getExpAttForCondition() (expAttValues map[string]types.AttributeValue, err error) {
 	if p.ExpAttForCondition == nil {
-		return nil
+		return nil, nil
 	}
 
 	l := len(p.ExpAttForCondition)
 	if l == 0 {
-		return nil
+		return nil, nil
 	}
 
 	expAttValues = make(map[string]types.AttributeValue, l)
 	for k, v := range p.ExpAttForCondition {
-		expAttValues[":"+k] = MustMarshalPrimitive(v)
+		av, err := attributevalue.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		expAttValues[":"+k] = av
 	}
 
-	return expAttValues
+	return expAttValues, nil
 }
 
 func (p *UpdateArg) getItem() any {
@@ -375,15 +379,15 @@ func MustMarshalPrimitive(key any) types.AttributeValue {
 }
 
 // Helper function to marshal Go types to DynamoDB attribute values
-func MustMarshalItem(in interface{}) map[string]types.AttributeValue {
+func MustMarshalItem(in interface{}) (map[string]types.AttributeValue, error) {
 	av, err := attributevalue.MarshalMap(in)
 	if err != nil {
-		log.Fatalf("Failed to marshal item: %v", err)
+		return nil, err
 	}
-	return av
+	return av, nil
 }
 
-func GetUpdateProps(input any) (updateExp string, expAttNames map[string]string, expAttValues map[string]types.AttributeValue) {
+func GetUpdateProps(input any) (updateExp string, expAttNames map[string]string, expAttValues map[string]types.AttributeValue, err error) {
 	var setExpressions []string
 	expAttNames = make(map[string]string)
 	expAttValues = make(map[string]types.AttributeValue)
@@ -394,7 +398,7 @@ func GetUpdateProps(input any) (updateExp string, expAttNames map[string]string,
 	}
 
 	if val.Kind() != reflect.Struct {
-		return "", nil, nil
+		return "", nil, nil, errors.New("input is not a struct")
 	}
 
 	typ := val.Type()
@@ -427,7 +431,7 @@ func GetUpdateProps(input any) (updateExp string, expAttNames map[string]string,
 
 		av, err := attributevalue.Marshal(field.Interface())
 		if err != nil {
-			continue
+			return "", nil, nil, err
 		}
 
 		// If marshaling results in a null attribute value (e.g. for a nil pointer), skip it.
@@ -440,9 +444,9 @@ func GetUpdateProps(input any) (updateExp string, expAttNames map[string]string,
 	}
 
 	if len(setExpressions) == 0 {
-		return "", nil, nil
+		return "", nil, nil, nil
 	}
 
 	updateExp = "SET " + strings.Join(setExpressions, ", ")
-	return updateExp, expAttNames, expAttValues
+	return updateExp, expAttNames, expAttValues, nil
 }

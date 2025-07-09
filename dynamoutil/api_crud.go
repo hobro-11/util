@@ -122,17 +122,21 @@ func GenerateProjectionExpression[T any]() (string, error) {
 }
 
 func PutItem(ctx context.Context, client *dynamodb.Client, putArg *PutArg) error {
+	var err error
 	input := dynamodb.PutItemInput{}
 	input.TableName = putArg.getTableName()
-	input.Item = putArg.getItemAttValues()	
+	input.Item, err = putArg.getItemAttValues()
+	if err != nil {
+		return dynamo_err.ErrorHandle(ctx, err)
+	}
+
 	expAttValues := putArg.getExpAttForCondition()
 	input.ExpressionAttributeValues = expAttValues
-
 	if putArg.getConditionExp() != nil {
 		input.ConditionExpression = putArg.getConditionExp()
 	}
 
-	_, err := client.PutItem(ctx, &input)
+	_, err = client.PutItem(ctx, &input)
 	if err != nil {
 		return dynamo_err.ErrorHandle(ctx, err)
 	}
@@ -144,13 +148,18 @@ func PutItem(ctx context.Context, client *dynamodb.Client, putArg *PutArg) error
 // if occur conditionCheckFailed, return errors.ErrConditionFailed
 func UpdateItem(ctx context.Context, client *dynamodb.Client, updateArg *UpdateArg) error {
 	input := dynamodb.UpdateItemInput{}
-	updateExp, expAttNames, expAttValues := GetUpdateProps(updateArg.getItem())
+	updateExp, expAttNames, expAttValues, err := GetUpdateProps(updateArg.getItem())
+	if err != nil {
+		return dynamo_err.ErrorHandle(ctx, err)
+	}
 	input.TableName = updateArg.getTableName()
 	input.Key = updateArg.getKey()
 	input.UpdateExpression = aws.String(updateExp)
 	input.ExpressionAttributeNames = expAttNames
 	input.ExpressionAttributeValues = expAttValues
-	if expAttValues := updateArg.getExpAttForCondition(); expAttValues != nil {
+	if expAttValues, err := updateArg.getExpAttForCondition(); err != nil {
+		return dynamo_err.ErrorHandle(ctx, err)
+	} else {
 		for k, v := range expAttValues {
 			if _, ok := input.ExpressionAttributeValues[k]; !ok {
 				input.ExpressionAttributeValues[k] = v
@@ -163,7 +172,7 @@ func UpdateItem(ctx context.Context, client *dynamodb.Client, updateArg *UpdateA
 		input.ConditionExpression = updateArg.getConditionExp()
 	}
 
-	_, err := client.UpdateItem(ctx, &input)
+	_, err = client.UpdateItem(ctx, &input)
 	if err != nil {
 		return dynamo_err.ErrorHandle(ctx, err)
 	}
@@ -217,10 +226,14 @@ func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *Wr
 
 	for _, putArg := range writeArg.PutArgs {
 		expAttValues := putArg.getExpAttForCondition()
+		itemAttValues, err := putArg.getItemAttValues()
+		if err != nil {
+			return dynamo_err.ErrorHandle(ctx, err)
+		}
 		input = append(input, types.TransactWriteItem{
 			Put: &types.Put{
 				TableName:                 putArg.getTableName(),
-				Item:                      putArg.getItemAttValues(),
+				Item:                      itemAttValues,
 				ConditionExpression:       putArg.getConditionExp(),
 				ExpressionAttributeValues: expAttValues,
 			},
@@ -228,13 +241,18 @@ func TransactionWrite(ctx context.Context, client *dynamodb.Client, writeArg *Wr
 	}
 
 	for _, updateArg := range writeArg.UpdateArgs {
-		updateExp, expNames, expVal := GetUpdateProps(updateArg.getItem())
-		if newExpVal := updateArg.getExpAttForCondition(); newExpVal != nil {
+		updateExp, expNames, expVal, err := GetUpdateProps(updateArg.getItem())
+		if err != nil {
+			return dynamo_err.ErrorHandle(ctx, err)
+		}
+		if newExpVal, err := updateArg.getExpAttForCondition(); err != nil {
+			return err
+		} else {
 			for k, v := range newExpVal {
 				if _, ok := expVal[k]; !ok {
 					expVal[k] = v
 				} else {
-					return &dynamo_err.ErrInternalError{Err: fmt.Errorf("duplicated expression attribute name: %s", k)}
+					return fmt.Errorf("duplicated expression attribute name: %s", k)
 				}
 			}
 		}
