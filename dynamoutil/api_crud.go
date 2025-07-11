@@ -70,6 +70,10 @@ func GetItem[Dest any](ctx context.Context, client *dynamodb.Client, getArg *Get
 		return nil, dynamo_err.ErrorHandle(ctx, err)
 	}
 
+	if result.Item == nil {
+		return nil, nil
+	}
+
 	dest := new(Dest)
 	err = attributevalue.UnmarshalMap(result.Item, dest)
 	if err != nil {
