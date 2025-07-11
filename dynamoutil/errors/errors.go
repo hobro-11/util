@@ -11,6 +11,7 @@ const (
 	TX_ERR_REASON_CONDITION_FAILED  = "ConditionFailed"
 	TX_ERR_REASON_CONFLICT_FAILED   = "ConflictFailed"
 	TX_ERR_REASON_VALIDATION_FAILED = "ValidationFailed"
+	TX_ERR_NONE = "None"
 )
 
 const TX_MASSAGE_FORMAT = "Code=%s Method=%s PK=%s SK=%s"

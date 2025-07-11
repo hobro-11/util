@@ -104,7 +104,7 @@ func getTxErrAppliedTxCancelReason(ctx context.Context, hs int, tae *types.Trans
 			} else if contains(tempCode, VALIDATION) {
 				code = TX_ERR_REASON_VALIDATION_FAILED
 			} else if contains(tempCode, NONE) {
-				continue
+				code = TX_ERR_NONE
 			}
 
 			errReasons[i] = TxCanceledReason{
