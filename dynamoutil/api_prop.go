@@ -208,15 +208,14 @@ func (p *DeleteArg) getTableName() *string {
 }
 
 func (p *DeleteArg) getKey() map[string]types.AttributeValue {
-	var key map[string]types.AttributeValue
+	key := make(map[string]types.AttributeValue)
 	pk := MustMarshalPrimitive(p.Key.PK)
+	key[p.Key.PKName] = pk
+
 	if p.Key.SK != nil && p.Key.SKName != "" {
 		sk := MustMarshalPrimitive(p.Key.SK)
 		if sk != nil {
-			key = map[string]types.AttributeValue{
-				p.Key.PKName: pk,
-				p.Key.SKName: sk,
-			}
+			key[p.Key.SKName] = sk
 		}
 	}
 	return key
